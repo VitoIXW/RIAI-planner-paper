@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version='1.7'>
+    <model name='CITY_1'>
+        <static>true</static>
+        <link name="link">
+            <collision name="collision_CITY_1">
+                <geometry>
+                    <mesh>
+                        <uri>model://CITY_1/CITY_1.obj</uri>
+                        <scale>20 20 20</scale>
+                    </mesh>
+                </geometry>
+            </collision>
+            <visual name="visual_CITY_1">
+                <geometry>
+                    <mesh>
+                        <uri>model://CITY_1/CITY_1.obj</uri>
+                        <scale>20 20 20</scale>
+                    </mesh>
+                </geometry>
+            </visual>
+        </link>
+    </model>
+</sdf>
