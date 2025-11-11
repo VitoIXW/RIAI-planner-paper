@@ -55,16 +55,8 @@ class RttStarPlanner():
     
 
     def _neighbor_radius(self):
-
-        #Karaman & Frazzoli 2011
-        d = len(self._upper_limit)
-        n = len(self._tree)
-
-        free_region = np.prod([self._upper_limit[i] - self._lower_limit[i] for i in range(len(self._lower_limit))])
-        gamma = 2 * (1 + 1/d)**(1/d) * free_region**(1/d) * self._theta_gamma
-
-        # return max(self._step_size * 2.5, gamma * (np.log(n)/n)**(1/d))
         return self._step_size * 2.5
+
 
     def _find_neighbors(self, q_new, radius):
         
@@ -76,20 +68,35 @@ class RttStarPlanner():
         return neighbors.pop(best_parent), neighbors
     
 
-    def _rewire(self, neighbors, new_node):
+    def _rewire(self, neighbors, new_node, obstacles):
         
         for neighbor in neighbors:
+
             through_q_new_cost = compute_cost(neighbor, new_node)
             if through_q_new_cost < neighbor._cost:
-                neighbor.set_parent(new_node)
+                if self._check_restrictions(neighbor, new_node, obstacles):
+                    neighbor.set_parent(new_node)
 
     
-    def _check_restrictions(self, q_new):
-        # TODO
+    def _check_restrictions(self, node, parent, obstacles):
+    
+        # Line parent-child doesn´t intercepts the obstacle
+        for obstacle in obstacles:
+            u = parent._position - node._position
+            v = obstacle[:2] - node._position
+
+            t = np.dot(v,u) / np.dot(u,u)
+            t = np.clip(t, 0, 1)
+
+            closest = node._position + t*u
+            dist = np.linalg.norm(closest - obstacle[:2])
+
+            if dist <= obstacle[2]:
+                return False
         return True
 
 
-    def solve(self, start, goal, tol=2.0):
+    def solve(self, start, goal, obstacles, tol=2.0):
         
         goal_node = None
         self._tree.append(Node(start))
@@ -100,19 +107,16 @@ class RttStarPlanner():
             q_nearest = self._q_nearest(q_rand)
             q_new = self._q_new(q_rand, q_nearest)
             
-            if self._check_restrictions(q_new):
-                
-                new_node = Node(q_new)
-                best_parent, neighbors = self._find_neighbors(q_new, self._neighbor_radius())
-                
-                if best_parent:
-                    new_node.set_parent(best_parent)
-                
-                self._tree.append(new_node)
-                
-                if neighbors:
-                    self._rewire(neighbors, new_node)
+            new_node = Node(q_new)
+            best_parent, neighbors = self._find_neighbors(q_new, self._neighbor_radius())
+            
+            if best_parent:
+                new_node.set_parent(best_parent)
 
+            if self._check_restrictions(new_node, best_parent, obstacles):
+                self._tree.append(new_node)
+                if neighbors:
+                    self._rewire(neighbors, new_node, obstacles)
                 if np.linalg.norm(new_node._position - goal) < tol:
                     goal_node = new_node
                     break
