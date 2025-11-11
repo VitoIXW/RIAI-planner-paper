@@ -1,9 +1,10 @@
 import numpy as np
 
 
-def compute_cost(child, parent):
-    return np.linalg.norm(child._position - parent._position) + parent._cost
-
+def compute_cost(child, parent, space_coef, time_coef):
+    spatial_cost = np.linalg.norm(child._position - parent._position) + parent._cost
+    temporal_cost = abs(child[3] - parent[3])
+    return space_coef * spatial_cost + time_coef * temporal_cost
 
 class Node():
     def __init__(
@@ -29,6 +30,9 @@ class RttStarPlanner():
             upper_limit,
             step_size,
             n_steps,
+            t_min,
+            t_max,
+            delta_t,
             theta_gamma = 1.1
         ):
         
@@ -38,13 +42,17 @@ class RttStarPlanner():
         self._step_size = step_size
         self._theta_gamma = theta_gamma
         self._n_steps = n_steps
+        self._t_min = t_min
+        self._t_max = t_max
+        self._delta_t = delta_t
 
 
     def _q_rand(self, goal=None, prob=.0) -> np.ndarray:
         if goal is not None and np.random.rand() < prob:
             return goal
-        return np.random.uniform(low=self._lower_limit, high=self._upper_limit)
-
+        rand_space = np.random.uniform(low=self._lower_limit, high=self._upper_limit)
+        rand_time = np.random.uniform(self._t_min, self._t_max)
+        return np.concatenate([rand_space, [rand_time]])
 
     def _q_nearest(self, q_rand):
         positions = np.array([node._position for node in self._tree])
@@ -53,8 +61,9 @@ class RttStarPlanner():
 
     
     def _q_new(self, q_rand, q_nearest):
-        return q_nearest + self._step_size * (q_rand - q_nearest) / np.linalg.norm(q_rand - q_nearest)
-    
+        new_space = q_nearest + self._step_size * (q_rand - q_nearest) / np.linalg.norm(q_rand - q_nearest)
+        new_time = q_nearest[3] + self._delta_t
+        return np.concatenate([new_space, [new_time]])
 
     def _neighbor_radius(self):
         return self._step_size * 2.5
