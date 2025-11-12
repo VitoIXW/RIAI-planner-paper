@@ -4,15 +4,19 @@ from matplotlib.patches import Rectangle
 from rtt_star_planner import RttStarPlanner 
 
 CYLINDER_HEIGHT = 1.3 
-OBSTACLE_RADIUS = 2.5
+OBSTACLE_RADIUS = 1.5
 Z_BASE = 0.0 
-BIAS_PROB = .5
+BIAS_PROB = .8
+SPACE_COEF = 0
+TIME_COEF = 1.0
+SPATIAL_TOL = 1.5
+TIME_TOL = 50.0
 
 upper_limit = np.array([20.0, 20.0, 1.5])
 lower_limit = np.array([0.0, 0.0, 0.0])
 
-start = np.array([0.0, 0.0, 1.5])
-goal = np.array([20.0, 20.0, 1.5])
+start = np.array([0.0, 0.0, 1.5, .0])
+goal = np.array([20.0, 20.0, 1.5, 70.0])
 
 obstacles = np.array([[5.0, 5.0, CYLINDER_HEIGHT, OBSTACLE_RADIUS],[12.0, 6.0, CYLINDER_HEIGHT, OBSTACLE_RADIUS],[4.0, 3.0, CYLINDER_HEIGHT, OBSTACLE_RADIUS],[3.0, 10.0, CYLINDER_HEIGHT, OBSTACLE_RADIUS], [15.0, 15.0, CYLINDER_HEIGHT, OBSTACLE_RADIUS]])
 
@@ -24,7 +28,12 @@ planner = RttStarPlanner(
     lower_limit,
     upper_limit,
     step_size,
-    n_steps
+    n_steps,
+    t_min=.0,
+    t_max=10.0,
+    delta_t=.5,
+    space_coef=SPACE_COEF,
+    time_coef=TIME_COEF
 )
 
 fig = plt.figure(figsize=(10,10))
@@ -52,7 +61,7 @@ for obstacle in obstacles:
     ax.plot_trisurf(X_base, Y_base, Z_base_const, color='gray', alpha=0.6) 
     ax.plot_trisurf(X_base, Y_base, Z_top_const, color='gray', alpha=0.6) 
 
-goal_node, tree, n_iterations = planner.solve(start, goal, obstacles, BIAS_PROB, True, tol)
+goal_node, tree, n_iterations = planner.solve(start, goal, obstacles, BIAS_PROB, True, SPATIAL_TOL, TIME_TOL)
 
 for node in tree:
     if node._parent:
