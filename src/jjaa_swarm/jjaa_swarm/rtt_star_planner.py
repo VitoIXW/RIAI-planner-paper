@@ -57,6 +57,7 @@ class RttStarPlanner():
 
         self._delta_t = .5
 
+
     def _q_rand(self, goal=None, prob=.0) -> np.ndarray:
         if goal is not None and np.random.rand() < prob:
             return goal[:3]  # Only spatial samples.
