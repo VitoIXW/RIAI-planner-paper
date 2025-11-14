@@ -129,6 +129,37 @@ def get_formation(center_pose: Pose, side_length: float, num_vehicles: int):
 
         return poses
 
+def get_initial_formation(self):
+    
+    target_poses = []
+    target_yaws = []
+    MIN_DIST_BETWEEN_DRONES = 1
+    for i in self.vehicle_ids:
+        pose = Pose()
+        pose.position.x = self.rc_poses[i].position.x
+        pose.position.y = self.rc_poses[i].position.y
+        pose.position.z = -self.operation_height
+        if target_poses:
+            assert pose.position.x > target_poses[-1].position.x + MIN_DIST_BETWEEN_DRONES
+        target_poses.append(pose)
+        target_yaws.append(self.rc_yaws[i])
+    return target_poses, target_yaws
+
+
+def get_landing_poses(self):
+        
+        target_poses = []
+        target_yaws = []
+        for i in self.vehicle_ids:
+            pose = Pose()
+            pose.position.x = self.rc_poses[i].position.x
+            pose.position.y = self.rc_poses[i].position.y
+            pose.position.z = 0.2
+            target_yaws.append(self.rc_yaws[i])
+            
+            target_poses.append(pose)
+        return target_poses, target_yaws
+
 
 def enu_ned(pose_enu):
     pose_ned = Pose()
@@ -259,7 +290,7 @@ def plot_trajectories(trajectories):
 
 def load_points_from_csv(filename):
     poses = []
-    pkg_share = get_package_share_directory('jjaa_swarm')
+    pkg_share = get_package_share_directory('riai_planner')
     filepath = os.path.join(pkg_share, 'configuration', filename)
 
     with open(filepath, newline='') as csvfile:
@@ -275,7 +306,7 @@ def load_points_from_csv(filename):
 
 def load_arucos_from_csv(filename):
     poses = {}
-    pkg_share = get_package_share_directory('jjaa_swarm')
+    pkg_share = get_package_share_directory('riai_planner')
     filepath = os.path.join(pkg_share, 'configuration', filename)
 
     with open(filepath, newline='') as csvfile:
@@ -445,3 +476,83 @@ def puntos_medios_rectangulo(esquinas):
         medio = punto_medio_pose(p1, p2)
         puntos_medios.append(medio)
     return puntos_medios
+
+
+def generate_loiter_formation(center: Pose, radius: float, n_drones=3, n_points=100, speed=1.0, n_turns=1):
+
+    if not center:
+        center = Pose()
+        center.pose.position.x = .0
+        center.pose.position.y = .0
+        center.pose.position.z = 4.0
+        
+    trajectories = []
+    angles0 = np.linspace(0, 2 * math.pi, n_drones, endpoint=False)
+    theta_vec = np.linspace(0, 2 * math.pi * n_turns, n_points * n_turns, endpoint=False)
+    d_theta = theta_vec[1] - theta_vec[0]
+    ang_speed = speed / radius
+    dt = d_theta / ang_speed
+
+    center_ned = Pose()
+    center_ned.position.x = center.position.x
+    center_ned.position.y = center.position.y
+    center_ned.position.z = -center.position.z
+
+    for theta0 in angles0:
+        ned_poses = []
+        ned_vels = []
+        target_yaws = []
+        target_dts = []
+
+        enu_poses = []
+        for dtheta in theta_vec:
+            theta = theta0 + dtheta
+            p = Pose()
+            p.position.x = center.position.x + radius * math.cos(theta)
+            p.position.y = center.position.y + radius * math.sin(theta)
+            p.position.z = center.position.z
+            enu_poses.append(p)
+
+        for i, p in enumerate(enu_poses):
+            ned_p = Pose()
+            ned_p.position.x = p.position.x
+            ned_p.position.y = p.position.y
+            ned_p.position.z = -p.position.z
+            ned_poses.append(ned_p)
+
+            vel = Twist()
+            if i > 0:
+                prev = enu_poses[i-1]
+                dx = (p.position.x - prev.position.x)
+                dy = (p.position.y - prev.position.y)
+                dz = -(p.position.z - prev.position.z)
+                vel.linear.x = dx / dt
+                vel.linear.y = dy / dt
+                vel.linear.z = dz / dt
+                target_dts.append(dt)
+            else:
+                vel.linear.x = 0.0
+                vel.linear.y = 0.0
+                vel.linear.z = 0.0
+                target_dts.append(0.0)
+            ned_vels.append(vel)
+
+            dx_c = center_ned.position.x - ned_p.position.x
+            dy_c = center_ned.position.y - ned_p.position.y
+            yaw = math.atan2(dy_c, dx_c)
+            target_yaws.append(yaw)
+
+        trajectories.append([ned_poses, ned_vels, target_yaws, target_dts])
+
+    return trajectories
+
+def dist2(a: Pose, b: Pose) -> float:
+    return math.hypot(a.position.x - b.position.x, a.position.y - b.position.y)
+
+def asign_circunference_points(drone_poses: list[Pose], target_poses: list[Pose]):
+
+    dist_bd = [np.min([dist2(x, tp) for x in drone_poses]) for tp in target_poses]
+    dist_bd_index = [np.argmin([dist2(x, tp) for x in drone_poses]) for tp in target_poses]
+    first_target = np.argmax(dist_bd)
+    first_drone = dist_bd_index[first_target]
+    return [[first_drone, first_target], [1-first_drone, 1-first_target]]

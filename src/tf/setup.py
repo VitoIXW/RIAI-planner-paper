@@ -1,8 +1,6 @@
 from setuptools import find_packages, setup
-import os
-from glob import glob
 
-package_name = 'jjaa_swarm'
+package_name = 'mission_tf'
 
 setup(
     name=package_name,
@@ -12,18 +10,17 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-         ('share/' + package_name + '/configuration', glob('configuration/*.csv')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
     maintainer='Manuel Domínguez Montero',
     maintainer_email='mandominguez97@gmail.com',
-    description="jjaa_swarm",
+    description="mission_tf",
     license='private',
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'jjaa_swarm = jjaa_swarm.jjaa_swarm:main', 
+            'mission_tf_node = mission_tf.mission_tf_node:main', 
         ],
     },
 )

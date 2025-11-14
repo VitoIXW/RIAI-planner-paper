@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>jjaa_swarm</name>
+  <name>tracking</name>
   <version>1.0.1</version>
   <description>""</description>
   <maintainer email="mandominguez97@gmail.com">Manuel Domínguez Montero</maintainer>

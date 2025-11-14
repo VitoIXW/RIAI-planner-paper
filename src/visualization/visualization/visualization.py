@@ -60,7 +60,7 @@ class Visualization(Node):
 
     def create_map_marker(self):
         map_marker = Marker()
-        map_marker.header.frame_id = "jjaa_swarm"
+        map_marker.header.frame_id = "riai_planner"
         map_marker.ns = "map"
         map_marker.id = 0
         map_marker.type = Marker.MESH_RESOURCE
@@ -94,7 +94,7 @@ class Visualization(Node):
                 continue
 
             drone_marker = Marker()
-            drone_marker.header.frame_id = "jjaa_swarm"
+            drone_marker.header.frame_id = "riai_planner"
             drone_marker.header.stamp = self.get_clock().now().to_msg()
             drone_marker.ns = "drones"
             drone_marker.id = i + 1
@@ -113,7 +113,7 @@ class Visualization(Node):
             markers.markers.append(drone_marker)
 
             trail_marker = Marker()
-            trail_marker.header.frame_id = "jjaa_swarm"
+            trail_marker.header.frame_id = "riai_planner"
             trail_marker.header.stamp = self.get_clock().now().to_msg()
             trail_marker.ns = "trails"
             trail_marker.id = 100 + i

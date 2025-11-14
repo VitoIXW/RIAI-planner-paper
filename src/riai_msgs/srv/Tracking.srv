@@ -1,0 +1,3 @@
+---
+geometry_msgs/Pose[] target_poses
+geometry_msgs/Pose[] obstacle_poses

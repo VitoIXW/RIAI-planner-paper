@@ -1,5 +1,5 @@
 world: 
-  type: "jjaa_swarm"
+  type: "riai_planner_paper_world"
   dayLight: "day"
   global_origin:
     lat: 47.397971057728974
