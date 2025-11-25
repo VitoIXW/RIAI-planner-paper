@@ -48,9 +48,7 @@ def run_all_combinations(
                 TIME_COEF
             )
 
-            goal_node, tree, n_iterations = planner.plan(
-                s, g, SPEED, obstacles, BIAS_PROB, LIMIT, SPATIAL_TOL, TIME_TOL
-            )
+            goal_node, tree, n_iterations = planner.plan(s, g, SPEED, obstacles, BIAS_PROB, LIMIT, SPATIAL_TOL, TIME_TOL)
 
             key = f"{s_name} -> {g_name}"
 
@@ -68,7 +66,7 @@ def run_all_combinations(
                 "tree": tree,
                 "n_iterations": n_iterations,
                 "final_cost": final_cost,
-                "final_time": final_time  # TODO
+                "final_time": final_time #TODO
             }
 
             print(f"✔ Terminada: {key}")
