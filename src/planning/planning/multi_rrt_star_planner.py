@@ -172,7 +172,7 @@ class MultiRRTStarPlanner():
 
         return best_results
     
-    def prune_path(goal_node, planner, obstacles):
+    def prune_path(self, goal_node, planner, obstacles):
         """
         Recibe goal_node y elimina nodos intermedios siempre que el segmento directo
         entre puntos consecutivos no tenga colisión.
