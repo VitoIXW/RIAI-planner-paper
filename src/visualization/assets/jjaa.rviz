@@ -151,7 +151,7 @@ Visualization Manager:
   Enabled: true
   Global Options:
     Background Color: 119; 118; 123
-    Fixed Frame: jjaa_swarm
+    Fixed Frame: riai_planner
     Frame Rate: 30
   Name: root
   Tools:
