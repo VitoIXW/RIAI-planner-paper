@@ -1,7 +1,7 @@
 from .rtt_star_planner import RttStarPlanner 
 import numpy as np
 from geometry_msgs.msg import Pose, Twist
-
+from .utils import plot_trajectories
 
 class MultiRRTStarPlanner():
     def __init__(
@@ -323,5 +323,5 @@ class MultiRRTStarPlanner():
                 yaws,
                 dts
             ]
-        
+            
         return trajectories

@@ -27,19 +27,19 @@ class MissionNode(Node):
 
         self.declare_parameter('mode', 'execution')
         self.declare_parameter('perception', 'global')
-        self.declare_parameter('plan_type', 1)
+        self.declare_parameter('plan_type', 0)
         self.declare_parameter('targets', 4)
         self.declare_parameter("vehicle_ids", [1,2])
-        self.declare_parameter('n_points', 200)
+        self.declare_parameter('n_points', 500)
         self.declare_parameter('mission_frame', [108.28299713134766, -94.181564331054688, 1.9263170957565308])
         self.declare_parameter('mission_radius', 5.0)
         self.declare_parameter('mission_height', 8.0)
         self.declare_parameter('step_size', 1.0)
-        self.declare_parameter('n_steps', 2000)
+        self.declare_parameter('n_steps', 4000)
         self.declare_parameter('space_coef', .8)
         self.declare_parameter('time_coef', .2)
         self.declare_parameter('avg_speed', 2.0)
-        self.declare_parameter('spatial_tol', .5)
+        self.declare_parameter('spatial_tol', 1.5)
         self.declare_parameter('time_tol', 100.0)
         self.declare_parameter('cylinder_height', 1.0)
         self.declare_parameter('cylinder_radius', .5)
@@ -92,7 +92,7 @@ class MissionNode(Node):
         self.get_logger().info(f"Vehicles waiting for offboard mode.")
 
         self.get_logger().info(f"Vehicles taking off.")
-        takeoff_future = self.multi_offboard_controller.take_off_all(10.0)
+        takeoff_future = self.multi_offboard_controller.take_off_all(5.0)
         while not takeoff_future.done():
             rclpy.spin_once(self, timeout_sec=2.0)
 
@@ -279,6 +279,7 @@ class MissionNode(Node):
             self.cylinder_radius
         )
         self.get_tracked_poses()
+
 
     def _check_trajectories(self, trajectories):
         valid_trajectories = [traj for traj in trajectories if traj and all(isinstance(traj[i], list) and len(traj[i]) > 0 for i in range(4))]
