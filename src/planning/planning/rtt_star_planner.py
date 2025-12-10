@@ -1,6 +1,52 @@
 import numpy as np
 
 
+def check_restrictions(
+        node, 
+        parent, 
+        obstacles,
+        upper_limit,
+        delta_t
+    ):
+        
+    # height restriction
+    if node._position[2] <= 0.0 or node._position[2] >= upper_limit[2]:
+        return False
+    
+    # Obstacle interception
+    t_travel = node._position[3] - parent._position[3]
+    if t_travel <= 1e-9:
+        return False
+    
+    n_samples = max(2,int(t_travel / delta_t))
+    t_samples = np.linspace(parent._position[3], node._position[3], n_samples)
+    
+    robot_interp = np.array([
+            parent._position[:3] + 
+            (node._position[:3] - parent._position[:3]) * 
+            ((t - parent._position[3]) / t_travel) 
+            for t in t_samples
+    ])
+    
+    for obstacle in obstacles:
+        
+        if obstacle[-1,3] < t_samples[0] or obstacle[0,3] > t_samples[-1]:
+            continue
+        
+        obstacle_interp = np.array([
+            np.interp(t_samples, obstacle[:,3], obstacle[:,dim]) for dim in range(3)]).T
+        
+        for i in range(n_samples):
+            
+            dist_xy = np.linalg.norm(robot_interp[i][:2] - obstacle_interp[i][:2])
+            dz = abs(robot_interp[i][2] - obstacle_interp[i][2])
+
+            if dist_xy <= obstacle[0,4]:
+                if 0.0 <= dz <= obstacle[0,2]:
+                    return False
+    return True
+
+
 def compute_cost(child_position, parent, space_coef, time_coef):
     spatial_cost = np.linalg.norm(child_position[:3] - parent._position[:3])
     temporal_cost = abs(child_position[3] - parent._position[3])
@@ -99,69 +145,38 @@ class RttStarPlanner():
 
             through_q_new_cost = compute_cost(neighbor._position, new_node, self._space_coef, self._time_coef)
             if through_q_new_cost < neighbor._cost:
-                if self._check_restrictions(neighbor, new_node, obstacles):
+                if check_restrictions(
+                    neighbor, 
+                    new_node, 
+                    obstacles, 
+                    self._upper_limit, 
+                    self._delta_t
+                ):
                     neighbor._parent = new_node
                     neighbor._cost = through_q_new_cost
 
-    
-    def _check_restrictions(self, node, parent, obstacles):
-        
-        # height restriction
-        if node._position[2] <= 0.0 or node._position[2] >= self._upper_limit[2]:
-            return False
-        
-        # Obstacle interception
-        t_travel = node._position[3] - parent._position[3]
-        if t_travel <= 1e-9:
-            return False
-        
-        n_samples = max(2,int(t_travel / self._delta_t))
-        t_samples = np.linspace(parent._position[3], node._position[3], n_samples)
-        
-        robot_interp = np.array([
-                parent._position[:3] + 
-                (node._position[:3] - parent._position[:3]) * 
-                ((t - parent._position[3]) / t_travel) 
-                for t in t_samples
-        ])
-        
-        for obstacle in obstacles:
-            
-            if obstacle[-1,3] < t_samples[0] or obstacle[0,3] > t_samples[-1]:
-                continue
-            
-            obstacle_interp = np.array([
-                np.interp(t_samples, obstacle[:,3], obstacle[:,dim]) for dim in range(3)]).T
-            
-            for i in range(n_samples):
-                
-                dist_xy = np.linalg.norm(robot_interp[i][:2] - obstacle_interp[i][:2])
-                dz = abs(robot_interp[i][2] - obstacle_interp[i][2])
-
-                if dist_xy <= obstacle[0,4]:
-                    if 0.0 <= dz <= obstacle[0,2]:
-                        return False
-        return True
-
 
     def plan(self, start, goal, speed, obstacles, bias_prob=.0, limit=False, tol_space=2.0, tol_time=5.0):
-        
         goal_node = None
-        self._tree.append(Node(start))
+        self._tree = [Node(start)]
         
         for n_iterations in range(self._n_steps):
-            
             q_rand = self._q_rand(goal, bias_prob)
             q_nearest = self._q_nearest(q_rand)
             q_new = self._q_new(q_rand, q_nearest, speed)
-            
             new_node = Node(q_new)
             best_parent, neighbors = self._find_neighbors(q_new, self._neighbor_radius())
             
             if best_parent is not None:
                 new_node.set_parent(best_parent, self._space_coef, self._time_coef)
 
-                if self._check_restrictions(new_node, best_parent, obstacles):
+                if check_restrictions(
+                    new_node, 
+                    best_parent, 
+                    obstacles,
+                    self._upper_limit,
+                    self._delta_t
+                ):
                     self._tree.append(new_node)
                     if neighbors:
                         self._rewire(neighbors, new_node, obstacles)
@@ -172,5 +187,4 @@ class RttStarPlanner():
                         goal_node = new_node
                         if limit:
                             break
-                
         return goal_node, self._tree, n_iterations+1

@@ -1,10 +1,9 @@
 from geometry_msgs.msg import Pose
-from .utils import generate_loiter_formation, square_bounds_from_circle, model_static_obstacles
+from .utils import generate_loiter_formation, bounds_from_cylinder, model_static_obstacles
 from .multi_rrt_star_planner import MultiRRTStarPlanner
 from .hungarian_tasks_planner import HungarianTasksPlanner
 from .assignation_methods import AssignationMethods
 import numpy as np
-
 from rclpy.task import Future
 from concurrent.futures import ThreadPoolExecutor
 
@@ -26,8 +25,8 @@ class Planner():
             cylinder_height: float,
             obstacle_radius: float
         ):
-        self._executor = ThreadPoolExecutor(max_workers=1)
-        self._t_final = 70.0
+        self._executor = ThreadPoolExecutor(max_workers=3)
+        self._t_final = 100.0
         self._mission_frame = mission_frame
         self._step_size = step_size
         self._n_steps = n_steps
@@ -41,24 +40,25 @@ class Planner():
         self._cylinder_height = cylinder_height
         self._obstacle_radius = obstacle_radius
         self._theta_gamma = 1.1
-        self._mission_frame.position.z = mission_height + 2.0
+        self._mission_height = mission_height
+
+        self.assigned_vehicles = [] 
+        self._lower_limit, self._upper_limit = bounds_from_cylinder(
+            mission_frame,
+            mission_radius
+        )
         
+        loiter_center = mission_frame
+        loiter_center.position.z = self._mission_height
+
         self.perception_trajectories = generate_loiter_formation(
-            center=mission_frame,
+            center=loiter_center,
             radius=mission_radius,
             n_drones=n_vehicles,
             n_points=200,
             speed=self._avg_speed
         )
 
-        self.assigned_vehicles = [] 
-        self._lower_limit, self._upper_limit = square_bounds_from_circle(
-            mission_frame,
-            mission_radius
-        )
-        self._lower_limit.append(.0)
-        self._upper_limit.append(mission_height)
-        
         self.hungarian_planner = HungarianTasksPlanner()
         self.rtt_planner = MultiRRTStarPlanner(
             self._lower_limit,
@@ -86,7 +86,7 @@ class Planner():
                 self._cylinder_height,
                 self._obstacle_radius
             )))
-        
+
         self._executor.submit(task)
         return future
   
@@ -102,62 +102,78 @@ class Planner():
         obstacles_poses,
         plan_type
     ):  
-        
+        start_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, .0])) for n, p in enumerate(vehicle_poses)]
+        goal_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, self._t_final])) for n, p in enumerate(goal_poses)]
+        strategy = None
+
+        match plan_type:
+            case AssignationMethods.ONLY_RRT_STAR.value:
+                strategy = self.multi_rrt_plan                
+            case AssignationMethods.RRT_STAR_HUNGARIAN.value:
+                strategy = self.multi_rrt_hungarian_plan     
+            case AssignationMethods.RRT.value:
+                strategy = self.multi_basic_rrt_plan     
+            case _:
+                strategy = self.multi_rrt_plan
+
         future = Future()
-
         def task():
-
-            match plan_type:
-                
-                case AssignationMethods.ONLY_RRT_STAR:
-                    start_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, .0])) for n, p in enumerate(vehicle_poses)]
-                    goal_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, self._t_final])) for n, p in enumerate(goal_poses)]
-
-                    future.set_result(self.multi_rrt_plan(
-                        start_poses, 
-                        goal_poses,     
-                        model_static_obstacles(
-                            obstacles_poses,
-                            self._t_final,
-                            self._cylinder_height,
-                            self._obstacle_radius
-                        )))
-                
-                case AssignationMethods.RRT_STAR_HUNGARIAN:
-                    start_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, .0])) for n, p in enumerate(vehicle_poses)]
-                    goal_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, self._t_final])) for n, p in enumerate(goal_poses)]
-
-                    future.set_result(self.multi_rrt_hungarian_plan(
-                        start_poses, 
-                        goal_poses,     
-                        model_static_obstacles(
-                            obstacles_poses,
-                            self._t_final,
-                            self._cylinder_height,
-                            self._obstacle_radius
-                        )))
-                
-                case _:
-                    start_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, .0])) for n, p in enumerate(vehicle_poses)]
-                    goal_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, self._t_final])) for n, p in enumerate(goal_poses)]
-                    
-                    future.set_result(self.multi_rrt_plan(
-                        start_poses, 
-                        goal_poses,     
-                        model_static_obstacles(
-                            obstacles_poses,
-                            self._t_final,
-                            self._cylinder_height,
-                            self._obstacle_radius
-                        )))
-                
+            future.set_result(strategy(
+                start_poses, 
+                goal_poses,     
+                model_static_obstacles(
+                    obstacles_poses,
+                    self._t_final,
+                    self._cylinder_height,
+                    self._obstacle_radius
+                )))
         self._executor.submit(task)
         return future
             
 
     def multi_rrt_hungarian_plan(self, start_poses, goal_poses, obstacles):
         
-        results = self.rtt_planner.run_all_combinations(
+        dt = .5
+        costs = [[None for _ in range(len(goal_poses))] for _ in range(len(start_poses))]
+
+        while any(c is None for row in costs for c in row):
+            results = self.rtt_planner.run_all_combinations(
+                start_poses,        
+                goal_poses,
+                self._avg_speed,
+                obstacles,
+                self._bias_prob,
+                self._limit,
+                self._spatial_tol,
+                self._time_tol
+            )
+            for id in results.keys(): 
+                agent_idx = int(id.split('->')[0].strip())
+                goal_idx = int(id.split('->')[1].strip())
+                new_cost = results[id]["final_cost"]
+
+                if costs[agent_idx][goal_idx] is None and new_cost is not None:
+                    costs[agent_idx][goal_idx] = new_cost
+            
+        agent_idx, goal_idx = self.hungarian_planner.plan(costs)
+        goal_poses_assigned = [goal_poses[goal_idx[i]][1] for i in range(len(agent_idx))]
+        start_positions = [s[1] for s in start_poses]
+        return self.rtt_planner.plan_paths(
+            start_positions, 
+            goal_poses_assigned,
+            self._avg_speed,
+            obstacles,
+            self._bias_prob,
+            self._limit,
+            self._spatial_tol,
+            self._time_tol,
+            self._obstacle_radius
+        )
+     
+
+    #TODO Implement basic RRT
+    def multi_basic_rrt_plan(self, start_poses, goal_poses, obstacles):
+        return self.rtt_planner.plan(
             start_poses,        
             goal_poses,
             self._avg_speed,
@@ -165,22 +181,9 @@ class Planner():
             self._bias_prob,
             self._limit,
             self._spatial_tol,
-            self._time_tol
-        )
-
-        dt = .5
-        costs = [[.0 for _ in range(len(goal_poses))] for _ in range(len(start_poses))]
-        for id in results.keys(): 
-
-            agent_idx = int(id.split('->')[0].strip())
-            goal_idx = int(id.split('->')[1].strip())
-            costs[agent_idx][goal_idx] = results[id]["final_cost"]
-        
-        agent_idx, goal_idx = self.hungarian_planner.plan(costs) 
-        goal_poses =  [goal_poses[i] for i in goal_idx]
-
-        return self.rtt_planner.plan_paths(
-            start_poses, goal_poses
+            self._time_tol,
+            self._cylinder_height,
+            self._obstacle_radius
         )
 
 

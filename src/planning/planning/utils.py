@@ -13,6 +13,16 @@ from ament_index_python.packages import get_package_share_directory
 import os
 from scipy import interpolate
 
+def euclidean_distance(starts, goals):
+    distances = []
+    for start in starts:
+        row = []
+        for goal in goals:
+            dist = np.linalg.norm(start - goal)
+            row.append(dist)
+        distances.append(row)
+    return distances
+
 
 def model_static_obstacles(
         obstacles_poses,
@@ -81,7 +91,7 @@ def bspline_trajectory(poses, n_points=200, smoothing=0.0, degree=3, periodic=Fa
             "pose": poses[0],
             "yaw": float('nan'),
             "vel": float('nan'),
-            "dt": float('nan')
+            "dt": .0
         })
         return result
     else: 
@@ -677,7 +687,7 @@ def asign_circunference_points(drone_poses: list[Pose], target_poses: list[Pose]
     return [[first_drone, first_target], [1-first_drone, 1-first_target]]
 
 
-def square_bounds_from_circle(pose: Pose, r: float):
+def bounds_from_cylinder(pose: Pose, r: float):
     x_center = pose.position.x
     y_center = pose.position.y
 
@@ -685,8 +695,10 @@ def square_bounds_from_circle(pose: Pose, r: float):
     xmax = x_center + r
     ymin = y_center - r
     ymax = y_center + r
+    zmin = .0
+    zmax = pose.position.z
 
-    return [xmin, ymin],[xmax, ymax]
+    return [xmin, ymin, zmin],[xmax, ymax, zmax]
 
 def plot_pose_list(poses: list[Pose]):
     

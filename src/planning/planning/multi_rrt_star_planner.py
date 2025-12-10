@@ -1,4 +1,4 @@
-from .rtt_star_planner import RttStarPlanner 
+from .rtt_star_planner import RttStarPlanner, check_restrictions 
 import numpy as np
 from geometry_msgs.msg import Pose, Twist
 from .utils import plot_trajectories
@@ -21,15 +21,7 @@ class MultiRRTStarPlanner():
         self._n_steps = n_steps
         self._space_coef = space_coef
         self._time_coef = time_coef
-
-        self._planner = RttStarPlanner(
-            self._lower_limit,
-            self._upper_limit,
-            self._step_size,
-            self._n_steps,
-            self._space_coef,
-            self._time_coef
-        )
+        self._delta_t = .5
 
 
     def plan_paths(
@@ -47,27 +39,40 @@ class MultiRRTStarPlanner():
 
         dt = .5
         trajectories = [[] for _ in range(len(start_poses))]
-        for agent_idx, start_pose, goal_pose in enumerate(zip(start_poses, goal_poses)):
+        for agent_idx, (start_pose, goal_pose) in enumerate(zip(start_poses, goal_poses)):
             
             poses = []
-            dts = [dt*n for n in range(len(poses))]
-            velocities = [Twist() for _ in range(len(poses))]
-            yaws = [float('nan') for _ in range(len(poses))]
+            goal_node = None
+            while goal_node is None:
 
-            goal_node, _, _ = self._planner.plan(
-                start_pose, goal_pose, 
-                speed, obstacles, 
-                bias_prob, limit, 
-                spatial_tol, time_tol
-            )
-            
-            while(goal_node._parent is not None):
+                planner = RttStarPlanner(
+                    self._lower_limit,
+                    self._upper_limit,
+                    self._step_size,
+                    self._n_steps,
+                    self._space_coef,
+                    self._time_coef
+                )
+               
+                goal_node, _, _ = planner.plan(
+                    start_pose, goal_pose, 
+                    speed, obstacles, 
+                    bias_prob, limit, 
+                    spatial_tol, time_tol
+                )
+           
+            node = goal_node
+            while(node._parent is not None):
                 p = Pose()
                 p.position.x = node._position[0]
                 p.position.y = node._position[1]
                 p.position.z = node._position[2]
                 poses.append(p)
                 node = node._parent
+
+            dts = [dt*n for n in range(len(poses))]
+            velocities = [None for _ in range(len(poses))]
+            yaws = [float('nan') for _ in range(len(poses))]
 
             trajectories[agent_idx] = [
                 poses[::-1],
@@ -85,10 +90,14 @@ class MultiRRTStarPlanner():
 
     def run_all_combinations(
             self, 
-            starts, goals,      
-            speed, obstacles,
-            bias_prob, limit,
-            spatial_tol, time_tol
+            starts, 
+            goals,      
+            speed, 
+            obstacles,
+            bias_prob, 
+            limit,
+            spatial_tol, 
+            time_tol
         ):
         
         results = {}
@@ -111,7 +120,6 @@ class MultiRRTStarPlanner():
                     spatial_tol, time_tol
                 )
                 key = f"{s_name} -> {g_name}"
-
                 if goal_node is not None:
                     final_cost = goal_node._cost
                     final_time = goal_node._position[3]
@@ -188,17 +196,22 @@ class MultiRRTStarPlanner():
         """
         remaining_starts = list(starts)
         remaining_goals = list(goals)
-
         best_results = {} 
-
         step = 1
+        
         while remaining_starts and remaining_goals:
+         
+            import time
+            start_time = time.time()
+            
             current_results = self.run_all_combinations(
                 remaining_starts, remaining_goals,
                 speed, obstacles,
                 bias_prob, limit,
                 spatial_tol, time_tol
             )
+            
+            elapsed = time.time() - start_time
             best_key = None
             best_cost = np.inf
 
@@ -262,7 +275,13 @@ class MultiRRTStarPlanner():
             last_valid = i + 1
 
             while j < len(path):
-                if self._planner._check_restrictions(path[j], pruned[-1], obstacles):
+                if check_restrictions(
+                    path[j], 
+                    pruned[-1], 
+                    obstacles,
+                    self._upper_limit,
+                    self._delta_t
+                ):
                     last_valid = j
                     j += 1
                 else:
@@ -280,7 +299,7 @@ class MultiRRTStarPlanner():
         pruned[0]._cost = 0.0
 
         for k in range(1, len(pruned)):
-            pruned[k].set_parent(pruned[k-1], self._planner._space_coef, self._planner._time_coef)
+            pruned[k].set_parent(pruned[k-1], self._space_coef, self._time_coef)
 
         return pruned[-1]  # nuevo goal_node podado
 
@@ -304,7 +323,7 @@ class MultiRRTStarPlanner():
             bias_prob, limit,
             spatial_tol, time_tol,obstacle_height, obstacle_radius
         )
-    
+
         dt = .5
         trajectories = [[] for _ in range(len(starts))]
         for id in results.keys():  
@@ -317,19 +336,18 @@ class MultiRRTStarPlanner():
                 p.position.z = node._position[2]
                 positions.append(p)
                 node = node._parent
-            
+
             positions = positions[::-1]
             dts = [dt*n for n in range(len(positions))]
             velocities = [Twist() for _ in range(len(positions))]
             yaws = [float('nan') for _ in range(len(positions))]
             
             id = int(id.split('->')[0].strip())
-            print(f"{id}")
             trajectories[id] = [
                 positions,
                 velocities,
                 yaws,
                 dts
             ]
-            
+        
         return trajectories
