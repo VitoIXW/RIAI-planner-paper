@@ -11,6 +11,8 @@ import cv2
 from planning.planner import Planner
 from planning.utils import enu_ned, enu_ned_trajectories, bspline_trajectory, plot_pose_list
 from riai_msgs.srv import Tracking
+from datetime import datetime
+from mission import batch_processing
 
 
 ASIGNATION_METHODS = {
@@ -38,7 +40,7 @@ class MissionNode(Node):
         self.declare_parameter('space_coef', .8)
         self.declare_parameter('time_coef', .2)
         self.declare_parameter('avg_speed', 1.0)
-        self.declare_parameter('spatial_tol', 1.45)
+        self.declare_parameter('spatial_tol', .45)
         self.declare_parameter('time_tol', 100.0)
         self.declare_parameter('cylinder_height', 2.0)
         self.declare_parameter('cylinder_radius', .5)
@@ -128,6 +130,15 @@ class MissionNode(Node):
         elapsed = end_time - start_time
         self.get_logger().info(f"Perception finish.")
         self.get_logger().info(f"Time elapsed: {elapsed}")
+        
+        batch_processing.save(
+            self.mission_id,
+            "global_perception",
+            len(self.vehicle_ids),
+            elapsed,
+            self.spatial_tol,
+            self.n_steps
+        )
 
 
     def execute_mission(self, plan_type: int): 
@@ -166,6 +177,15 @@ class MissionNode(Node):
 
         self.multi_offboard_controller.hold_all()
         self.multi_offboard_controller.disarm_all()
+
+        batch_processing.save(
+            self.mission_id,
+            ASIGNATION_METHODS[plan_type],
+            len(self.vehicle_ids),
+            elapsed,
+            self.spatial_tol,
+            self.n_steps
+        )
 
         
     def get_vehicle_poses(self):
@@ -238,6 +258,8 @@ class MissionNode(Node):
 
 
     def configure(self):
+        
+        self.mission_id = datetime.now().strftime("%Y%m%d%H%M%S%f")
 
         self.configuration_service = SimUAVSConfigurationService(
             self,
