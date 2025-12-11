@@ -671,7 +671,6 @@ def generate_loiter_formation(center: Pose, radius: float, n_drones=3, n_points=
             target_yaws.append(yaw)
 
         trajectories.append([poses, vels, target_yaws, target_dts])
-
     return trajectories
 
 

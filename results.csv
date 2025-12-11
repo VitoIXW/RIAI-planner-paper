@@ -1,3 +1,0 @@
-mission_id,task_id,n_vehicles,time,spatial_tol,n_steps
-20251210191639342955,global_perception,2,32.29132399299999,0.45,2000
-20251210191639342955,RRT* + Hungarian,2,28.042859849000024,0.45,2000

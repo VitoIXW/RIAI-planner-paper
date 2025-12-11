@@ -42,7 +42,9 @@ class Planner():
         self._theta_gamma = 1.1
         self._mission_height = mission_height
 
-        self.assigned_vehicles = [] 
+        self._assigned_uavs = []
+        self._goal_ids = []
+
         self._lower_limit, self._upper_limit = bounds_from_cylinder(
             mission_frame,
             mission_radius
@@ -51,7 +53,7 @@ class Planner():
         loiter_center = mission_frame
         loiter_center.position.z = self._mission_height
 
-        self.perception_trajectories = generate_loiter_formation(
+        self._perception_trajectories = generate_loiter_formation(
             center=loiter_center,
             radius=mission_radius,
             n_drones=n_vehicles,
@@ -77,22 +79,25 @@ class Planner():
 
         def task():
             start_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, .0])) for n, p in enumerate(vehicle_poses)]
-            goal_poses = [self.perception_trajectories[n][0][0] for n in range(len(vehicle_poses))]
+            goal_poses = [self._perception_trajectories[n][0][0] for n in range(len(vehicle_poses))]
             goal_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, self._t_final])) for n, p in enumerate(goal_poses)]
             
-            future.set_result(self.multi_rrt_plan(start_poses, goal_poses, model_static_obstacles(
+            self._assigned_uavs, self._goal_ids, trajectories = self.multi_rrt_plan(start_poses, goal_poses, model_static_obstacles(
                 obstacles_poses,
                 self._t_final,
                 self._cylinder_height,
                 self._obstacle_radius
-            )))
+            ))
+            future.set_result((self._assigned_uavs, trajectories))
 
         self._executor.submit(task)
         return future
   
 
     def get_perception_trajectory(self):
-        return self.perception_trajectories
+
+        trajectories = [self._perception_trajectories[goal_id] for goal_id in self._goal_ids]
+        return self._assigned_uavs, trajectories
 
 
     def get_tasks_planning(
@@ -118,7 +123,7 @@ class Planner():
 
         future = Future()
         def task():
-            future.set_result(strategy(
+            assigned_uavs, _, trajectories = strategy(
                 start_poses, 
                 goal_poses,     
                 model_static_obstacles(
@@ -126,10 +131,11 @@ class Planner():
                     self._t_final,
                     self._cylinder_height,
                     self._obstacle_radius
-                )))
+                ))
+            future.set_result((assigned_uavs, trajectories))
         self._executor.submit(task)
         return future
-            
+
 
     def multi_rrt_hungarian_plan(self, start_poses, goal_poses, obstacles):
         

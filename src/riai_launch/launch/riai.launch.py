@@ -44,7 +44,6 @@ def px4_gz_positioning_setup(context, *args, **kwargs):
             }]
         )
         actions.append(node)
-
     return actions
 
 
@@ -55,10 +54,22 @@ def generate_launch_description():
         default_value='1',
         description='Número de vehículos a lanzar'
     )
+    plan_type_arg = DeclareLaunchArgument(
+        'plan_type',
+        default_value='1',  
+        description='Tipo de plan de misión'
+    )
+    spatial_tol_arg = DeclareLaunchArgument(
+        'spatial_tol',
+        default_value='0.45',  
+        description='Spatial tolerance in RRT'
+    )
 
     ld = LaunchDescription()
 
     ld.add_action(num_vehicles_arg)
+    ld.add_action(plan_type_arg)
+    ld.add_action(spatial_tol_arg)
     ld.add_action(OpaqueFunction(function=px4_gz_positioning_setup))
 
     ld.add_action(Node(
@@ -69,10 +80,27 @@ def generate_launch_description():
     ))
 
     ld.add_action(Node(
-        package='mission',
-        executable='mission_node',
-        name='mission_1',
-        output='screen'
+    package='mission',
+    executable='mission_node',
+    name='mission_1',
+    output='screen',
+    parameters=[{
+        'num_vehicles': LaunchConfiguration('num_vehicles'),
+        'plan_type': LaunchConfiguration('plan_type'),
+        'n_points': 500,
+        'mission_frame': [108.28299713134766, -94.181564331054688, 15.0],
+        'mission_radius': 5.0,
+        'mission_height': 7.0,
+        'step_size': 1.0,
+        'n_steps': 2000,
+        'space_coef': 0.8,
+        'time_coef': 0.2,
+        'avg_speed': 1.0,
+        'spatial_tol': LaunchConfiguration('spatial_tol'),
+        'time_tol': 100.0,
+        'cylinder_height': 2.0,
+        'cylinder_radius': 0.5
+        }]
     ))
 
     return ld

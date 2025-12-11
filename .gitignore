@@ -1,7 +1,10 @@
-build
-log
-install
-tmp
+**/build
+**/log
+**/install
+**/tmp
 .venv/*
 **/__pycache__
-
+**/PX4-Autopilot
+**/gz_assets
+**/QGroundControl.AppImage
+**/results.csv

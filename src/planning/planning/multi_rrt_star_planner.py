@@ -38,7 +38,9 @@ class MultiRRTStarPlanner():
         ):
 
         dt = .5
-        trajectories = [[] for _ in range(len(start_poses))]
+        assigned_uavs = []
+        trajectories = []
+
         for agent_idx, (start_pose, goal_pose) in enumerate(zip(start_poses, goal_poses)):
             
             poses = []
@@ -74,18 +76,19 @@ class MultiRRTStarPlanner():
             velocities = [None for _ in range(len(poses))]
             yaws = [float('nan') for _ in range(len(poses))]
 
-            trajectories[agent_idx] = [
+            assigned_uavs.append(agent_idx)
+            trajectories.append([
                 poses[::-1],
                 velocities,
                 yaws,
                 dts
-            ]
+            ])
             obstacles.append(
                 self.path_to_obstacle(
                     goal_node, obstacle_radius)
             )
 
-        return trajectories
+        return assigned_uavs, None, trajectories
             
 
     def run_all_combinations(
@@ -325,10 +328,13 @@ class MultiRRTStarPlanner():
         )
 
         dt = .5
-        trajectories = [[] for _ in range(len(starts))]
-        for id in results.keys():  
+        assigned_uav_ids = []
+        goal_ids = []
+        trajectories = []
+        
+        for id_str in results.keys():  
             positions = []
-            node = results[id]["goal_node"]
+            node = results[id_str]["goal_node"]
             while(node._parent is not None): 
                 p = Pose()
                 p.position.x = node._position[0]
@@ -342,12 +348,13 @@ class MultiRRTStarPlanner():
             velocities = [Twist() for _ in range(len(positions))]
             yaws = [float('nan') for _ in range(len(positions))]
             
-            id = int(id.split('->')[0].strip())
-            trajectories[id] = [
+            assigned_uav_ids.append(int(id_str.split('->')[0].strip()))
+            goal_ids.append(int(id_str.split('->')[1].strip()))
+            trajectories.append([
                 positions,
                 velocities,
                 yaws,
                 dts
-            ]
-        
-        return trajectories
+            ])
+
+        return assigned_uav_ids, goal_ids, trajectories
