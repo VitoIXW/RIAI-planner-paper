@@ -50,7 +50,7 @@ for((vehicle=1; vehicle<=num_vehicles; vehicle++)); do
 
     y_n=$((y_0 - (vehicle-1) * 2))
     export PX4_UXRCE_DDS_NS="px4_${vehicle}"
-    export PX4_GZ_MODEL_POSE="90,${y_0},3,0,0,0"
+    export PX4_GZ_MODEL_POSE="90,${y_n},3,0,0,0"
     
     export PX4_PARAM_EKF2_EV_CTRL=11
     export PX4_PARAM_EKF2_HGT_REF=3
