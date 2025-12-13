@@ -95,6 +95,7 @@ for vehicles in "${NUM_VEHICLES[@]}"; do
                 echo "Starting simulation $n of $NUM_SIMULATIONS..."
                 echo "Num vehicles: $vehicles"
                 echo "Plan type: $plan"
+                echo "Spatial tolerance: $spatial_tol"
                 echo "=============================="
                 
                 if [ $DRY_EXECUTION == false ]; then
@@ -118,7 +119,7 @@ for vehicles in "${NUM_VEHICLES[@]}"; do
                         ros2 launch $LAUNCH_FILE \
                             num_vehicles:="${vehicles}" \
                             plan_type:="${plan}" \
-                            spatial_tol:="${SPATIAL_TOL[2]}" \
+                            spatial_tol:="${spatial_tol}" \
                             mission_radius:="${MISSION_RADIUS[1]}" \
                             mission_height:="${MISSION_HEIGHT[1]}" &
                         LAUNCH_PID=$!

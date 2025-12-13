@@ -15,13 +15,6 @@ from datetime import datetime
 from mission import batch_processing
 
 
-ASIGNATION_METHODS = {
-    0: "RTT_STAR",
-    1: "RRT_STAR_HUNGARIAN",
-    2: "RRT"
-}
-
-
 class MissionNode(Node):
     def __init__(self):
         super().__init__('mission_node')
@@ -67,7 +60,11 @@ class MissionNode(Node):
         self.detected_ids = set()
         self.planner = None
         self._perception_active = False
+
         self._perception_start_time = None
+        self._assignation_start_time = None
+        self._execution_start_time = None
+        self._execution_end_time = None
 
         self.configure()
 
@@ -116,11 +113,6 @@ class MissionNode(Node):
         self.get_logger().info(f"Starting Perception")   
         self._perception_active = True     
         self._perception_start_time = time.perf_counter()
-        batch_processing.save_mission_row(
-            self.mission_id, 
-            self.num_vehicles,
-            self._perception_start_time
-        )
         future = self.multi_offboard_controller.trajectory_following(
             assigned_uavs,
             self.transform_to_local_frame_trajectory(trajectories)  
@@ -136,10 +128,16 @@ class MissionNode(Node):
 
     def execute_mission(self, plan_type: int): 
         
-        targets_poses = [self.target_poses[int(id)] for id in self.detected_ids]
-        
+        targets_poses = []
         trajectories = []
         assigned_uavs = []
+        for id in self.detected_ids:
+            pose = self.target_poses[int(id)]
+            pose.position.z = self.mission_height
+            targets_poses.append(pose)
+
+        self._assignation_start_time = time.perf_counter()
+        
         while not self._check_trajectories(trajectories, len(assigned_uavs)):
             self.get_logger().info(f"Computing execution trajectory.")
             future = self.planner.get_tasks_planning(
@@ -152,16 +150,9 @@ class MissionNode(Node):
                 rclpy.spin_once(self, timeout_sec=2.0)
             assigned_uavs, goal_ids, trajectories = future.result()
 
-        for uav, goal in zip(assigned_uavs, goal_ids):
-            batch_processing.save_assignation_row(
-                self.mission_id,
-                uav,
-                self.get_vehicle_poses()[uav],
-                goal   
-            )
-
+        self._execution_start_time = time.perf_counter()
+        
         self.get_logger().info(f"Executing mission.")
-        start_time = time.perf_counter()
         future = self.multi_offboard_controller.trajectory_following(
             assigned_uavs,
             self.transform_to_local_frame_trajectory(trajectories)
@@ -172,19 +163,28 @@ class MissionNode(Node):
         future = self.multi_offboard_controller.land_all()
         while not future.done():
             rclpy.spin_once(self, timeout_sec=2.0)
-        
-        end_time = time.perf_counter()
-        elapsed = end_time - start_time
-
-        self.get_logger().info(f"Method: {ASIGNATION_METHODS[plan_type]}, Time elapsed: {elapsed}")
-
         self.multi_offboard_controller.hold_all()
         self.multi_offboard_controller.disarm_all()
 
-        batch_processing.save_execution_row(
+        self._execution_end_time = time.perf_counter()
+        
+        for uav, goal in zip(assigned_uavs, goal_ids):
+            batch_processing.save_assignation_row(
+                self.mission_id,
+                uav,
+                self.get_vehicle_poses()[uav],
+                goal   
+            )
+
+        batch_processing.save_mission_row(
             self.mission_id,
-            elapsed,
-            plan_type
+            self.num_vehicles,
+            self.plan_type,
+            self._perception_start_time,
+            self._assignation_start_time,
+            self._execution_start_time,
+            self._execution_end_time,
+            self.spatial_tol
         )
 
         
@@ -210,18 +210,8 @@ class MissionNode(Node):
         
         response = future.result()
         self.target_poses = response.target_poses
-        for p in self.target_poses:
-            p.position.z = 6.0 # Review
-        
         self.obstacle_poses = response.obstacle_poses
 
-
-    def check_perception(self):
-        if len(self.detected_ids) == len(self.target_poses):
-            self.get_logger().info("¡Todos los ArUco IDs han sido detectados!")
-            return True
-        return False
-    
 
     def image_callback(self, msg):
 
@@ -233,7 +223,14 @@ class MissionNode(Node):
                 for aruco_id in ids.flatten():
                     if aruco_id not in self.detected_ids and aruco_id < len(self.target_poses):
                         self.detected_ids.add(aruco_id)
-                        self.get_logger().info(f"Nuevo ArUco detectado: {aruco_id}")
+                        self.get_logger().info(f"New task detected: {aruco_id}")
+
+                        batch_processing.save_perception_row(
+                            self.mission_id,
+                            aruco_id,
+                            self.target_poses[aruco_id],
+                            time.perf_counter()
+                        )
 
 
     def transform_to_local_frame_trajectory(self, trajectories):
