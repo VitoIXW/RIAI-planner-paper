@@ -29,8 +29,8 @@ class MissionNode(Node):
         self.declare_parameter("num_vehicles", 1)
         self.declare_parameter('n_points', 500)
         self.declare_parameter('mission_frame', [108.28299713134766, -94.181564331054688, 15.0])
-        self.declare_parameter('mission_radius', 10.0)
-        self.declare_parameter('mission_height', 7.0)
+        self.declare_parameter('mission_radius', 20.0)
+        self.declare_parameter('mission_height', 17.0)
         self.declare_parameter('step_size', 1.0)
         self.declare_parameter('n_steps', 2000)
         self.declare_parameter('space_coef', .8)
@@ -39,7 +39,7 @@ class MissionNode(Node):
         self.declare_parameter('spatial_tol', .45)
         self.declare_parameter('time_tol', 100.0)
         self.declare_parameter('cylinder_height', 2.0)
-        self.declare_parameter('cylinder_radius', 1.0)
+        self.declare_parameter('cylinder_radius', 1.5)
         
         self.plan_type = self.get_parameter('plan_type').get_parameter_value().integer_value
         self.num_vehicles = self.get_parameter('num_vehicles').get_parameter_value().integer_value
@@ -58,7 +58,7 @@ class MissionNode(Node):
         self.cylinder_radius = self.get_parameter('cylinder_radius').get_parameter_value().double_value
 
         self.bridge = CvBridge()
-        self.dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_ARUCO_ORIGINAL)
+        self.dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_250)
         self.parameters = cv2.aruco.DetectorParameters()
         self.multi_offboard_controller = None
         self.target_poses = {}
@@ -66,6 +66,8 @@ class MissionNode(Node):
         self.rgb_subs = []
         self.detected_ids = set()
         self.planner = None
+        self._perception_active = False
+        self._perception_start_time = None
 
         self.configure()
 
@@ -111,8 +113,14 @@ class MissionNode(Node):
         
         assigned_uavs, trajectories = self.planner.get_perception_trajectory()
 
-        self.get_logger().info(f"Starting Perception")        
-        start_time = time.perf_counter()
+        self.get_logger().info(f"Starting Perception")   
+        self._perception_active = True     
+        self._perception_start_time = time.perf_counter()
+        batch_processing.save_mission_row(
+            self.mission_id, 
+            self.num_vehicles,
+            self._perception_start_time
+        )
         future = self.multi_offboard_controller.trajectory_following(
             assigned_uavs,
             self.transform_to_local_frame_trajectory(trajectories)  
@@ -121,25 +129,18 @@ class MissionNode(Node):
             rclpy.spin_once(self, timeout_sec=2.0)
 
         end_time = time.perf_counter()
-        elapsed = end_time - start_time
+        elapsed = end_time - self._perception_start_time
         self.get_logger().info(f"Perception finish.")
         self.get_logger().info(f"Time elapsed: {elapsed}")
         
-        batch_processing.save(
-            self.mission_id,
-            "global_perception",
-            self.num_vehicles,
-            elapsed,
-            self.spatial_tol,
-            self.n_steps
-        )
-
 
     def execute_mission(self, plan_type: int): 
         
         targets_poses = [self.target_poses[int(id)] for id in self.detected_ids]
+        
         trajectories = []
-        while not self._check_trajectories(trajectories, len(targets_poses)):
+        assigned_uavs = []
+        while not self._check_trajectories(trajectories, len(assigned_uavs)):
             self.get_logger().info(f"Computing execution trajectory.")
             future = self.planner.get_tasks_planning(
                 self.get_vehicle_poses(), 
@@ -149,7 +150,15 @@ class MissionNode(Node):
             )
             while not future.done():
                 rclpy.spin_once(self, timeout_sec=2.0)
-            assigned_uavs, trajectories = future.result()
+            assigned_uavs, goal_ids, trajectories = future.result()
+
+        for uav, goal in zip(assigned_uavs, goal_ids):
+            batch_processing.save_assignation_row(
+                self.mission_id,
+                uav,
+                self.get_vehicle_poses()[uav],
+                goal   
+            )
 
         self.get_logger().info(f"Executing mission.")
         start_time = time.perf_counter()
@@ -172,13 +181,10 @@ class MissionNode(Node):
         self.multi_offboard_controller.hold_all()
         self.multi_offboard_controller.disarm_all()
 
-        batch_processing.save(
+        batch_processing.save_execution_row(
             self.mission_id,
-            ASIGNATION_METHODS[plan_type],
-            self.num_vehicles,
             elapsed,
-            self.spatial_tol,
-            self.n_steps
+            plan_type
         )
 
         
@@ -205,7 +211,7 @@ class MissionNode(Node):
         response = future.result()
         self.target_poses = response.target_poses
         for p in self.target_poses:
-            p.position.z = 6.0
+            p.position.z = 6.0 # Review
         
         self.obstacle_poses = response.obstacle_poses
 
@@ -218,16 +224,18 @@ class MissionNode(Node):
     
 
     def image_callback(self, msg):
-        cv_image = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        _, ids, _ = cv2.aruco.detectMarkers(cv_image, self.dictionary, parameters=self.parameters)
 
-        if ids is not None:
-            for aruco_id in ids.flatten():
-                if aruco_id not in self.detected_ids and aruco_id < len(self.target_poses):
-                    self.detected_ids.add(aruco_id)
-                    self.get_logger().info(f"Nuevo ArUco detectado: {aruco_id}")
+        if self._perception_active:
+            cv_image = self.bridge.compressed_imgmsg_to_cv2(msg, desired_encoding='bgr8')
+            _, ids, _ = cv2.aruco.detectMarkers(cv_image, self.dictionary, parameters=self.parameters)
 
-    
+            if ids is not None:
+                for aruco_id in ids.flatten():
+                    if aruco_id not in self.detected_ids and aruco_id < len(self.target_poses):
+                        self.detected_ids.add(aruco_id)
+                        self.get_logger().info(f"Nuevo ArUco detectado: {aruco_id}")
+
+
     def transform_to_local_frame_trajectory(self, trajectories):
         trajectories = self.smooth_trajectories(enu_ned_trajectories(trajectories))
         return trajectories 
@@ -295,20 +303,20 @@ class MissionNode(Node):
         self.get_tracked_poses()
 
 
-    def _check_trajectories(self, trajectories, num_goals=None):
+    def _check_trajectories(self, trajectories, num_vehicles=None):
         
-        if num_goals is None:
-            num_goals = self.num_vehicles
+        if num_vehicles is None or num_vehicles == 0:
+            num_vehicles = self.num_vehicles
 
         if len(trajectories) == 0:
             return False
         
         valid_trajectories = [traj for traj in trajectories if traj and all(isinstance(traj[i], list) and len(traj[i]) > 0 for i in range(4))]
 
-        if len(valid_trajectories) != num_goals:
+        if len(valid_trajectories) != num_vehicles:
             self.get_logger().warn(
                 f"Trajectories missing for some vehicles!"
-                f"{len(valid_trajectories)}/{num_goals} valid"
+                f"{len(valid_trajectories)}/{num_vehicles} valid"
             )
             return False
         return True

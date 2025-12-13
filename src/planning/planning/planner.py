@@ -55,7 +55,7 @@ class Planner():
 
         self._perception_trajectories = generate_loiter_formation(
             center=loiter_center,
-            radius=mission_radius,
+            radius=mission_radius-2.0,
             n_drones=n_vehicles,
             n_points=200,
             speed=self._avg_speed
@@ -123,7 +123,7 @@ class Planner():
 
         future = Future()
         def task():
-            assigned_uavs, _, trajectories = strategy(
+            assigned_uavs, goal_ids, trajectories = strategy(
                 start_poses, 
                 goal_poses,     
                 model_static_obstacles(
@@ -132,7 +132,7 @@ class Planner():
                     self._cylinder_height,
                     self._obstacle_radius
                 ))
-            future.set_result((assigned_uavs, trajectories))
+            future.set_result((assigned_uavs, goal_ids, trajectories))
         self._executor.submit(task)
         return future
 
@@ -164,7 +164,8 @@ class Planner():
         agent_idx, goal_idx = self.hungarian_planner.plan(costs)
         goal_poses_assigned = [goal_poses[goal_idx[i]][1] for i in range(len(agent_idx))]
         start_positions = [s[1] for s in start_poses]
-        return self.rtt_planner.plan_paths(
+        
+        _, _, trajectories = self.rtt_planner.plan_paths(
             start_positions, 
             goal_poses_assigned,
             self._avg_speed,
@@ -175,7 +176,8 @@ class Planner():
             self._time_tol,
             self._obstacle_radius
         )
-     
+        return agent_idx, goal_idx, trajectories
+
 
     #TODO Implement basic RRT
     def multi_basic_rrt_plan(self, start_poses, goal_poses, obstacles):

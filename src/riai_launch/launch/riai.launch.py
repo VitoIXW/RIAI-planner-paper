@@ -59,6 +59,16 @@ def generate_launch_description():
         default_value='1',  
         description='Tipo de plan de misión'
     )
+    mission_radius_arg = DeclareLaunchArgument(
+        'mission_radius',
+        default_value='10.0',  
+        description='Radio de percepción'
+    )
+    mission_height_arg = DeclareLaunchArgument(
+        'mission_height',
+        default_value='10.0',  
+        description='Altura de misión'
+    )
     spatial_tol_arg = DeclareLaunchArgument(
         'spatial_tol',
         default_value='0.45',  
@@ -69,6 +79,8 @@ def generate_launch_description():
 
     ld.add_action(num_vehicles_arg)
     ld.add_action(plan_type_arg)
+    ld.add_action(mission_radius_arg)
+    ld.add_action(mission_height_arg)
     ld.add_action(spatial_tol_arg)
     ld.add_action(OpaqueFunction(function=px4_gz_positioning_setup))
 
@@ -89,8 +101,8 @@ def generate_launch_description():
         'plan_type': LaunchConfiguration('plan_type'),
         'n_points': 500,
         'mission_frame': [108.28299713134766, -94.181564331054688, 15.0],
-        'mission_radius': 5.0,
-        'mission_height': 7.0,
+        'mission_radius': LaunchConfiguration('mission_radius'),
+        'mission_height': LaunchConfiguration('mission_height'),
         'step_size': 1.0,
         'n_steps': 2000,
         'space_coef': 0.8,
