@@ -63,7 +63,7 @@ wait_for_simulator() {
 
 # Simulation parameters
 #_______________________________________________________________
-PLAN_TYPE=("0" "1" "2") # RRT RRT* RRT-HUNGARIAN
+PLAN_TYPE=("0" "1" "2" "3") # RRT RRT* RRT-HUNGARIAN RANDOM
 NUM_VEHICLES=("1" "2" "3" "4")
 N_POINTS=500
 MISSION_FRAME="[108.28299713134766,-94.181564331054688,15.0]"
@@ -80,7 +80,7 @@ CYLINDER_HEIGHT=3.0
 CYLINDER_RADIUS=1.2
 MAX_ATTEMPS=5
 MAX_MINUTES=5
-NUM_SIMULATIONS=1
+NUM_SIMULATIONS=5
 #_______________________________________________________________
 
 DRY_EXECUTION=false

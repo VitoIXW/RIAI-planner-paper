@@ -129,22 +129,25 @@ class MissionNode(Node):
     def execute_mission(self, plan_type: int): 
         
         targets_poses = []
+        tasks_ids = []
         trajectories = []
         assigned_uavs = []
+
         for id in self.detected_ids:
             pose = self.target_poses[int(id)]
             pose.position.z = self.mission_height
             targets_poses.append(pose)
+            tasks_ids.append(id)
 
+        assignation_initial_vehicle_poses = self.get_vehicle_poses()
         self._assignation_start_time = time.perf_counter()
-        
         while not self._check_trajectories(trajectories, len(assigned_uavs)):
             self.get_logger().info(f"Computing execution trajectory.")
             future = self.planner.get_tasks_planning(
                 self.get_vehicle_poses(), 
                 targets_poses,
                 self.obstacle_poses,
-                self.plan_type
+                plan_type
             )
             while not future.done():
                 rclpy.spin_once(self, timeout_sec=2.0)
@@ -172,8 +175,8 @@ class MissionNode(Node):
             batch_processing.save_assignation_row(
                 self.mission_id,
                 uav,
-                self.get_vehicle_poses()[uav],
-                goal   
+                assignation_initial_vehicle_poses[uav],
+                tasks_ids[goal]   
             )
 
         batch_processing.save_mission_row(

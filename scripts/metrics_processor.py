@@ -1,13 +1,5 @@
-#!/usr/bin/env python3
-
 import csv
-import matplotlib.pyplot as plt
 import numpy as np
-
-# n vehiculos / Tiempo entre detecciones
-# alrotimo de planificación / tiempo de ejecución
-# alrotimo de planificación / distancia recorrida
-# Para n precisiones espaciales / tiempo de ejecución RRT star
 
 
 class MissionRow:
@@ -26,7 +18,7 @@ class PerceptionRow:
     def __init__(self, dict):
         self.mission_id = dict["mission_id"]
         self.task_id = dict["task_id"]
-        self.pose = dict["pose"]
+        self.task_pose = np.array([float(dict["x"]), float(dict["y"]), float(dict["z"])])
         self.detection_time = dict["detection_time"]
             
 
@@ -34,29 +26,29 @@ class AssignationRow:
     def __init__(self, dict):
         self.mission_id = dict["mission_id"]
         self.vehicle_id = dict["vehicle_id"]
-        self.vehicle_pose = dict["vehicle_pose"]
+        self.vehicle_pose = np.array([float(dict["x"]), float(dict["y"]), float(dict["z"])])
         self.task_id = dict["task_id"]
             
             
-def load_mission_rows():
+def load_mission_rows() -> dict[str, MissionRow]:
     with open("results/mission_results.csv", newline='') as f:
         reader = csv.DictReader(f)
-        return [MissionRow(row) for row in reader]
+        return {row["mission_id"]: MissionRow(row) for row in reader}
     
 
-def load_perception_rows(mission_id):
+def load_perception_rows(mission_id) -> dict[int, PerceptionRow]:
     with open("results/perception_results.csv", newline='') as f:
         reader = csv.DictReader(f)
-        return [PerceptionRow(row) for row in reader if row["mission_id"] == mission_id]    
+        return {row["task_id"]: PerceptionRow(row) for row in reader if row["mission_id"] == mission_id}    
     
     
-def load_assignation_rows(mission_id):
+def load_assignation_rows(mission_id) -> dict[int, AssignationRow]:
     with open("results/assignation_results.csv", newline='') as f:
         reader = csv.DictReader(f)
-        return [AssignationRow(row) for row in reader if row["mission_id"] == mission_id]  
+        return {row["vehicle_id"]: AssignationRow(row) for row in reader if row["mission_id"] == mission_id}  
         
         
-def time_between_detections(mission_row: MissionRow, perception_rows: list[PerceptionRow]):
+def time_between_detections(perception_rows: list[PerceptionRow]):
     
     dts = []
     prev = None
@@ -65,65 +57,144 @@ def time_between_detections(mission_row: MissionRow, perception_rows: list[Perce
         if prev == None:
             prev = row.detection_time
         else:
-            dts.append(row.detection_time - prev)
+            dts.append(float(row.detection_time) - float(prev))
             prev = row.detection_time  
                   
     return np.mean(dts)        
     
         
-def avg_distance_covered(mission_row: MissionRow, assignation_row: list[AssignationRow]):
-    ...
+def avg_distance_covered(assignation_rows: list[AssignationRow]):
     
-    
-                    
-if __name__ == "__main__":
-    
+    distances = []
+
+    for row in assignation_rows:
+        task_rows = load_perception_rows(row.mission_id)
+
+        if row.task_id in task_rows:
+            distances.append(
+                np.linalg.norm(
+                    row.vehicle_pose - task_rows[row.task_id].task_pose
+                ))
+        
+    return np.mean(distances)
+
+
+def compute_time_between_detections():
+
     time_between_detections_dict = {}
-    avg_distance_covered_dict = {}
-    assignation_elapsed_time_dict = {}
-    execution_elapsed_time_dict = {}
-    
-    for mission_row in load_mission_rows():
-        
-        if time_between_detections_dict[mission_row.n_vehicles] is None:
+    mission_rows = load_mission_rows().values()
+
+    for mission_row in mission_rows:
+
+        if mission_row.n_vehicles not in time_between_detections_dict:
             time_between_detections_dict[mission_row.n_vehicles] = []
-            
+
         time_between_detections_dict[mission_row.n_vehicles].append(
-            time_between_detections(
-                mission_row, load_perception_rows(mission_row.mission_id)
-            )
-        )
-        
-        if avg_distance_covered_dict[mission_row.plan_type] is None:
+            time_between_detections(load_perception_rows(mission_row.mission_id).values()))
+
+    for n in time_between_detections_dict:
+        time_between_detections_dict[n] = np.mean(time_between_detections_dict[n])
+
+    return time_between_detections_dict
+
+
+def compute_avg_distance_covered():
+
+    avg_distance_covered_dict = {}
+
+    for mission_row in load_mission_rows().values():
+
+        if mission_row.plan_type not in avg_distance_covered_dict:
             avg_distance_covered_dict[mission_row.plan_type] = {}
-        
-        if avg_distance_covered_dict[mission_row.plan_type][mission_row.n_vehicles] is None:
+            
+        if mission_row.n_vehicles not in avg_distance_covered_dict[mission_row.plan_type]:
             avg_distance_covered_dict[mission_row.plan_type][mission_row.n_vehicles] = []
         
         avg_distance_covered_dict[mission_row.plan_type][mission_row.n_vehicles].append(
-            avg_distance_covered(
-                mission_row, load_assignation_rows(mission_row.mission_id)
-            )
-        )
+            avg_distance_covered(load_assignation_rows(mission_row.mission_id).values()))
         
-        if assignation_elapsed_time_dict[mission_row.plan_type] is None: 
-            assignation_elapsed_time_dict[mission_row.plan_type] = []
-            
-        if assignation_elapsed_time_dict[mission_row.plan_type][mission_row.n_vehicles] is None:
-            assignation_elapsed_time_dict[mission_row.plan_type][mission_row.n_vehicles] = []
-            
-        assignation_elapsed_time_dict[mission_row.plan_type][mission_row.n_vehicles].append(
-            mission_row.execution_start_time - mission_row.assignation_start_time
-        )
+    for n in avg_distance_covered_dict:
+        for m in avg_distance_covered_dict[n]:
+            avg_distance_covered_dict[n][m] = np.mean(avg_distance_covered_dict[n][m])
+    
+    return avg_distance_covered_dict
+
+
+def compute_assignation_elapsed_time():
+
+    assignation_elapsed_time_dict = {}
+
+    for mission_row in load_mission_rows().values():
+
+        if mission_row.plan_type not in assignation_elapsed_time_dict: 
+            assignation_elapsed_time_dict[mission_row.plan_type] = {}
+                
+        if mission_row.n_vehicles not in assignation_elapsed_time_dict[mission_row.plan_type]:
+            assignation_elapsed_time_dict[mission_row.plan_type][mission_row.n_vehicles] = {}
         
-        if execution_elapsed_time_dict[mission_row.plan_type] is None: 
-            execution_elapsed_time_dict[mission_row.plan_type] = []
+        if mission_row.spatial_tol not in assignation_elapsed_time_dict[mission_row.plan_type][mission_row.n_vehicles]:
+            assignation_elapsed_time_dict[mission_row.plan_type][mission_row.n_vehicles][mission_row.spatial_tol] = []
+
+        assignation_elapsed_time_dict[mission_row.plan_type][mission_row.n_vehicles][mission_row.spatial_tol].append(
+            float(mission_row.execution_start_time) - float(mission_row.assignation_start_time)
+        )
+
+    for n in assignation_elapsed_time_dict:
+        for m in assignation_elapsed_time_dict[n]:
+            for p in assignation_elapsed_time_dict[n][m]:
+                assignation_elapsed_time_dict[n][m][p] = np.mean(assignation_elapsed_time_dict[n][m][p])
+    
+    return assignation_elapsed_time_dict
+
+
+def compute_execution_elapsed_time():
+
+    execution_elapsed_time_dict = {}
+
+    for mission_row in load_mission_rows().values():
+        
+        if mission_row.plan_type not in execution_elapsed_time_dict: 
+            execution_elapsed_time_dict[mission_row.plan_type] = {}
             
-        if execution_elapsed_time_dict[mission_row.plan_type][mission_row.n_vehicles] is None:
+        if mission_row.n_vehicles not in execution_elapsed_time_dict[mission_row.plan_type]:
             execution_elapsed_time_dict[mission_row.plan_type][mission_row.n_vehicles] = []
             
         execution_elapsed_time_dict[mission_row.plan_type][mission_row.n_vehicles].append(
-            mission_row.execution_end_time - mission_row.execution_start_time
+            float(mission_row.execution_end_time) - float(mission_row.execution_start_time)
         )
+
+    for n in execution_elapsed_time_dict:
+        for m in execution_elapsed_time_dict[n]:
+            execution_elapsed_time_dict[n][m] = np.mean(execution_elapsed_time_dict[n][m])
+
+    return execution_elapsed_time_dict
+
+
+if __name__ == "__main__":
+    
+    print("=" * 80)
+    print("Time between detections for number of vehicles.")
+    print("=" * 80)
+    t_detections = compute_time_between_detections()
+    print(f"{t_detections}")
+    
+    print("=" * 80)
+    print("Covered distance for planning type and number of vehicles.")
+    print("=" * 80)
+    d_covered = compute_avg_distance_covered()
+    print(f"{d_covered}")
+
+    print("=" * 80)
+    print("Assignation elapsed time for planning type, number of vehicles and spatial tolerance.")
+    print("=" * 80)
+    t_assignation = compute_assignation_elapsed_time()
+    print(f"{t_assignation}")
+
+    print("=" * 80)
+    print("Execution elapsed time for planning type and number of vehicles.")
+    print("=" * 80)
+    t_execution = compute_execution_elapsed_time()
+    print(f"{t_execution}")
+
         
         

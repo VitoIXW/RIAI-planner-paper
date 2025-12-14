@@ -2,10 +2,11 @@ from geometry_msgs.msg import Pose
 from .utils import generate_loiter_formation, bounds_from_cylinder, model_static_obstacles
 from .multi_rrt_star_planner import MultiRRTStarPlanner
 from .hungarian_tasks_planner import HungarianTasksPlanner
-from .assignation_methods import AssignationMethods
+from .assignation_methods import AssignationMethods, RRTType
 import numpy as np
 from rclpy.task import Future
 from concurrent.futures import ThreadPoolExecutor
+import random
 
 
 class Planner():
@@ -62,6 +63,7 @@ class Planner():
         )
 
         self.hungarian_planner = HungarianTasksPlanner()
+        
         self.rtt_planner = MultiRRTStarPlanner(
             self._lower_limit,
             self._upper_limit,
@@ -69,7 +71,7 @@ class Planner():
             self._n_steps,
             self._space_coef,
             self._time_coef,
-            self._theta_gamma
+            self._theta_gamma,
         )
 
 
@@ -82,7 +84,7 @@ class Planner():
             goal_poses = [self._perception_trajectories[n][0][0] for n in range(len(vehicle_poses))]
             goal_poses = [(f"{n}", np.array([p.position.x, p.position.y, p.position.z, self._t_final])) for n, p in enumerate(goal_poses)]
             
-            self._assigned_uavs, self._goal_ids, trajectories = self.multi_rrt_plan(start_poses, goal_poses, model_static_obstacles(
+            self._assigned_uavs, self._goal_ids, trajectories = self.multi_rrt_star_plan(start_poses, goal_poses, model_static_obstacles(
                 obstacles_poses,
                 self._t_final,
                 self._cylinder_height,
@@ -112,14 +114,16 @@ class Planner():
         strategy = None
 
         match plan_type:
-            case AssignationMethods.ONLY_RRT_STAR.value:
-                strategy = self.multi_rrt_plan                
-            case AssignationMethods.RRT_STAR_HUNGARIAN.value:
-                strategy = self.multi_rrt_hungarian_plan     
             case AssignationMethods.RRT.value:
-                strategy = self.multi_basic_rrt_plan     
+                strategy = self.multi_rrt_plan                
+            case AssignationMethods.RRT_STAR.value:
+                strategy = self.multi_rrt_star_plan    
+            case AssignationMethods.RRT_STAR_HUNGARIAN.value:
+                strategy = self.multi_rrt_hungarian_plan  
+            case AssignationMethods.RANDOM.value:
+                strategy = self.random_plan     
             case _:
-                strategy = self.multi_rrt_plan
+                strategy = self.multi_rrt_star_plan
 
         future = Future()
         def task():
@@ -179,8 +183,7 @@ class Planner():
         return agent_idx, goal_idx, trajectories
 
 
-    #TODO Implement basic RRT
-    def multi_basic_rrt_plan(self, start_poses, goal_poses, obstacles):
+    def multi_rrt_plan(self, start_poses, goal_poses, obstacles):
         return self.rtt_planner.plan(
             start_poses,        
             goal_poses,
@@ -191,11 +194,35 @@ class Planner():
             self._spatial_tol,
             self._time_tol,
             self._cylinder_height,
-            self._obstacle_radius
+            self._obstacle_radius,
+            alg_type=RRTType.RRT.value
         )
 
 
-    def multi_rrt_plan(self, start_poses, goal_poses, obstacles):
+    def random_plan(self, start_poses, goal_poses, obstacles):
+        
+        agent_idx = list(range(len(start_poses)))
+        goal_idx = list(range(len(goal_poses)))
+        random.shuffle(goal_idx)
+
+        goal_poses_assigned = [goal_poses[goal_idx[i]][1] for i in range(len(agent_idx))]
+        start_positions = [s[1] for s in start_poses]
+        
+        _, _, trajectories = self.rtt_planner.plan_paths(
+            start_positions, 
+            goal_poses_assigned,
+            self._avg_speed,
+            obstacles,
+            self._bias_prob,
+            self._limit,
+            self._spatial_tol,
+            self._time_tol,
+            self._obstacle_radius
+        )
+        return agent_idx, goal_idx[:len(agent_idx)], trajectories
+
+
+    def multi_rrt_star_plan(self, start_poses, goal_poses, obstacles):
         return self.rtt_planner.plan(
             start_poses,        
             goal_poses,

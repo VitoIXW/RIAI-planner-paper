@@ -7,3 +7,5 @@
 **/PX4-Autopilot
 **/gz_assets
 **/QGroundControl.AppImage
+**/np
+*.csv

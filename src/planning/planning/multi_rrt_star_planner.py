@@ -1,7 +1,10 @@
 from .rtt_star_planner import RttStarPlanner, check_restrictions 
+from .rtt_planner import RttPlanner
 import numpy as np
 from geometry_msgs.msg import Pose, Twist
 from .utils import plot_trajectories
+from planning.assignation_methods import RRTType
+
 
 class MultiRRTStarPlanner():
     def __init__(
@@ -24,6 +27,46 @@ class MultiRRTStarPlanner():
         self._delta_t = .5
 
 
+    def create_rrt_planner(
+        self,
+        lower_limit,
+        upper_limit,
+        step_size,
+        n_steps,
+        space_coef,
+        time_coef,
+        alg_type
+    ):
+        match alg_type:
+            case RRTType.RRT.value:
+                return RttPlanner(
+                    lower_limit,
+                    upper_limit,
+                    step_size,
+                    n_steps,
+                    space_coef,
+                    time_coef
+                )
+            case RRTType.RRT_STAR.value:
+                return RttStarPlanner(
+                    lower_limit,
+                    upper_limit,
+                    step_size,
+                    n_steps,
+                    space_coef,
+                    time_coef
+                )
+            case _:
+                return RttStarPlanner(
+                    lower_limit,
+                    upper_limit,
+                    step_size,
+                    n_steps,
+                    space_coef,
+                    time_coef
+                )
+
+
     def plan_paths(
             self,
             start_poses, 
@@ -34,7 +77,8 @@ class MultiRRTStarPlanner():
             limit,
             spatial_tol, 
             time_tol,
-            obstacle_radius
+            obstacle_radius,
+            alg_type = RRTType.RRT_STAR.value
         ):
 
         dt = .5
@@ -46,14 +90,15 @@ class MultiRRTStarPlanner():
             poses = []
             goal_node = None
             while goal_node is None:
-
-                planner = RttStarPlanner(
+                
+                planner = self.create_rrt_planner(
                     self._lower_limit,
                     self._upper_limit,
                     self._step_size,
                     self._n_steps,
                     self._space_coef,
-                    self._time_coef
+                    self._time_coef,
+                    alg_type
                 )
                
                 goal_node, _, _ = planner.plan(
@@ -100,7 +145,8 @@ class MultiRRTStarPlanner():
             bias_prob, 
             limit,
             spatial_tol, 
-            time_tol
+            time_tol,
+            alg_type = RRTType.RRT_STAR.value
         ):
         
         results = {}
@@ -108,13 +154,14 @@ class MultiRRTStarPlanner():
         for s_name, s in starts:
             for g_name, g in goals:
 
-                planner = RttStarPlanner(
+                planner = self.create_rrt_planner(
                     self._lower_limit,
                     self._upper_limit,
                     self._step_size,
                     self._n_steps,
                     self._space_coef,
-                    self._time_coef
+                    self._time_coef,
+                    alg_type
                 )
                 goal_node, tree, n_iterations = planner.plan(
                     s, g, 
@@ -182,7 +229,8 @@ class MultiRRTStarPlanner():
             spatial_tol, 
             time_tol,
             obstacle_height,
-            obstacle_radius
+            obstacle_radius,
+            alg_type = RRTType.RRT_STAR.value
         ):
         """
         Devuelve best result que es un diccionario con esto por cada "Start X -> Goal Y" 
@@ -201,7 +249,7 @@ class MultiRRTStarPlanner():
         remaining_goals = list(goals)
         best_results = {} 
         step = 1
-        
+  
         while remaining_starts and remaining_goals:
          
             import time
@@ -211,9 +259,10 @@ class MultiRRTStarPlanner():
                 remaining_starts, remaining_goals,
                 speed, obstacles,
                 bias_prob, limit,
-                spatial_tol, time_tol
+                spatial_tol, time_tol,
+                alg_type
             )
-            
+
             elapsed = time.time() - start_time
             best_key = None
             best_cost = np.inf
@@ -318,15 +367,17 @@ class MultiRRTStarPlanner():
         spatial_tol, 
         time_tol,
         obstacle_height,
-        obstacle_radius
+        obstacle_radius,
+        alg_type = RRTType.RRT_STAR.value
     ):
         results = self.choose_and_plan(
             starts, goals,
             speed, obstacles,
             bias_prob, limit,
-            spatial_tol, time_tol,obstacle_height, obstacle_radius
+            spatial_tol, time_tol,
+            obstacle_height, obstacle_radius,
+            alg_type
         )
-
         dt = .5
         assigned_uav_ids = []
         goal_ids = []
