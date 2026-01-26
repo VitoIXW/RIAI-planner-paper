@@ -4,6 +4,7 @@ import numpy as np
 from geometry_msgs.msg import Pose, Twist
 from .utils import plot_trajectories
 from planning.assignation_methods import RRTType
+from .hungarian_tasks_planner import HungarianTasksPlanner
 
 
 class MultiRRTStarPlanner():
@@ -25,6 +26,8 @@ class MultiRRTStarPlanner():
         self._space_coef = space_coef
         self._time_coef = time_coef
         self._delta_t = .5
+
+        self.hungarian_planner = HungarianTasksPlanner()
 
 
     def create_rrt_planner(
@@ -219,62 +222,81 @@ class MultiRRTStarPlanner():
 
 
     def choose_and_plan(
-            self, 
-            starts, 
-            goals,
-            speed, 
-            obstacles,
-            bias_prob, 
-            limit,
-            spatial_tol, 
-            time_tol,
-            obstacle_height,
-            obstacle_radius,
-            alg_type = RRTType.RRT_STAR.value
-        ):
-        """
-        Devuelve best result que es un diccionario con esto por cada "Start X -> Goal Y" 
-
-        {
-                    "start": np.ndarray        # posición inicial 4D [x, y, z, t]
-                    "goal": np.ndarray         # posición objetivo 4D [x, y, z, t]
-                    "goal_node": Node          # nodo final alcanzado en el árbol
-                    "tree": List[Node]         # todos los nodos generados para esa ruta
-                    "n_iterations": int        # iteraciones realizadas
-                    "final_cost": float | None # coste total del camino (si existe)
-                    "final_time": float | None # tiempo final t del nodo objetivo
-        }
-        """
+        self, 
+        starts, 
+        goals,
+        speed, 
+        obstacles,
+        bias_prob, 
+        limit,
+        spatial_tol, 
+        time_tol,
+        obstacle_height,
+        obstacle_radius,
+        alg_type = RRTType.RRT_STAR.value
+    ):
+        dt = .5
+        
         remaining_starts = list(starts)
         remaining_goals = list(goals)
         best_results = {} 
         step = 1
-  
+
         while remaining_starts and remaining_goals:
-         
-            import time
-            start_time = time.time()
             
-            current_results = self.run_all_combinations(
-                remaining_starts, remaining_goals,
-                speed, obstacles,
-                bias_prob, limit,
-                spatial_tol, time_tol,
-                alg_type
-            )
+            costs = [[None for _ in remaining_goals] for _ in remaining_starts]
+            start_name_to_idx = {s[0]: i for i, s in enumerate(remaining_starts)}
+            goal_name_to_idx = {g[0]: i for i, g in enumerate(remaining_goals)}
+            
+            while any(c is None for row in costs for c in row):
+                current_results = self.run_all_combinations(
+                    remaining_starts,        
+                    remaining_goals,
+                    speed,
+                    obstacles,
+                    bias_prob,
+                    limit,
+                    spatial_tol,
+                    time_tol,
+                    alg_type
+                )
+                
+                for id in current_results.keys(): 
+                    agent_name = id.split('->')[0].strip()
+                    goal_name = id.split('->')[1].strip()
+                    
+                    agent_idx = start_name_to_idx.get(agent_name)
+                    goal_idx = goal_name_to_idx.get(goal_name)
+                    
+                    if agent_idx is None or goal_idx is None:
+                        continue
+                    
+                    new_cost = current_results[id]["final_cost"]
 
-            elapsed = time.time() - start_time
+                    if costs[agent_idx][goal_idx] is None and new_cost is not None:
+                        costs[agent_idx][goal_idx] = new_cost
+            
+            agent_idx, goal_idx = self.hungarian_planner.plan(costs)
+            best_cost = .0
             best_key = None
-            best_cost = np.inf
 
-            for key, data in current_results.items():
+            for a, g in zip(agent_idx, goal_idx):
+               
+                agent_name = remaining_starts[a][0]
+                goal_name = remaining_goals[g][0]
+                key = f"{agent_name} -> {goal_name}"
+                
+                data = current_results.get(key)
+                if data is None:
+                    continue
+
                 cost = data["final_cost"]
-                if cost is not None and cost < best_cost:
+                if cost is not None and cost > best_cost:
                     best_cost = cost
                     best_key = key
 
             if best_key is None:
-                break
+                continue
 
             chosen = current_results[best_key]
             goal_node = chosen["goal_node"]
