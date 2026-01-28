@@ -6,6 +6,7 @@ from geometry_msgs.msg import Pose
 MISSION_FILE = "results/mission_results.csv"
 PERCEPTION_FILE = "results/perception_results.csv"
 ASSIGNATION_FILE = "results/assignation_results.csv"
+TRAJECTORY_RESULTS = "results/trajectory_results.csv"
 
 
 def save_mission_row(
@@ -60,6 +61,36 @@ def save_perception_row(
                 pose.position.z,
                 detection_time
             ])
+            
+
+def save_trajectory_row(
+        mission_id: str,
+        trajectory_length: float
+    ):
+        file_exists = os.path.exists(TRAJECTORY_RESULTS)
+    
+        with open(TRAJECTORY_RESULTS, mode='a', newline='') as f:
+            writer = csv.writer(f)
+            
+            if not file_exists:
+                writer.writerow(["mission_id", "trajectory_length"])
+            
+            writer.writerow([
+                mission_id, 
+                trajectory_length
+            ])
+
+
+def save_trajectories(
+        mission_id: str,
+        trajectories, 
+        avg_speed: float
+    ):
+        
+    for trajectory in trajectories:
+        duration = sum(trajectory[3]) # sum of dts, duration of the trajectory.
+        trajectory_length = duration * avg_speed
+        save_trajectory_row(mission_id, trajectory_length)
 
 
 def save_assignation_row(

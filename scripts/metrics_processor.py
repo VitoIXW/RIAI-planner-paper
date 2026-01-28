@@ -20,6 +20,12 @@ class PerceptionRow:
         self.task_id = dict["task_id"]
         self.task_pose = np.array([float(dict["x"]), float(dict["y"]), float(dict["z"])])
         self.detection_time = dict["detection_time"]
+
+
+class TrajectoryRow:
+    def __init__(self, dict):
+        self.mission_id = dict["mission_id"]
+        self.trajectory_length = float(dict["trajectory_length"])
             
 
 class AssignationRow:
@@ -40,8 +46,14 @@ def load_perception_rows(mission_id) -> dict[int, PerceptionRow]:
     with open("results/perception_results.csv", newline='') as f:
         reader = csv.DictReader(f)
         return {row["task_id"]: PerceptionRow(row) for row in reader if row["mission_id"] == mission_id}    
-    
-    
+
+
+def load_trajectory_rows(mission_id) -> list[TrajectoryRow]:
+    with open("results/trajectory_results.csv", newline='') as f:
+        reader = csv.DictReader(f)
+        return [TrajectoryRow(row) for row in reader if row["mission_id"] == mission_id]  
+
+
 def load_assignation_rows(mission_id) -> dict[int, AssignationRow]:
     with open("results/assignation_results.csv", newline='') as f:
         reader = csv.DictReader(f)
@@ -63,7 +75,7 @@ def time_between_detections(perception_rows: list[PerceptionRow]):
     return np.mean(dts)        
     
         
-def avg_distance_covered(assignation_rows: list[AssignationRow]):
+def euclidean_distance_sum(assignation_rows: list[AssignationRow]):
     
     distances = []
 
@@ -76,7 +88,7 @@ def avg_distance_covered(assignation_rows: list[AssignationRow]):
                     row.vehicle_pose - task_rows[row.task_id].task_pose
                 ))
         
-    return np.mean(distances)
+    return np.sum(distances)
 
 
 def compute_time_between_detections():
@@ -98,26 +110,49 @@ def compute_time_between_detections():
     return time_between_detections_dict
 
 
-def compute_avg_distance_covered():
+def compute_euclidean_distance_sum():
 
-    avg_distance_covered_dict = {}
+    euclidean_distance_sum_dict = {}
 
     for mission_row in load_mission_rows().values():
 
-        if mission_row.plan_type not in avg_distance_covered_dict:
-            avg_distance_covered_dict[mission_row.plan_type] = {}
+        if mission_row.plan_type not in euclidean_distance_sum_dict:
+            euclidean_distance_sum_dict[mission_row.plan_type] = {}
             
-        if mission_row.n_vehicles not in avg_distance_covered_dict[mission_row.plan_type]:
-            avg_distance_covered_dict[mission_row.plan_type][mission_row.n_vehicles] = []
+        if mission_row.n_vehicles not in euclidean_distance_sum_dict[mission_row.plan_type]:
+            euclidean_distance_sum_dict[mission_row.plan_type][mission_row.n_vehicles] = []
         
-        avg_distance_covered_dict[mission_row.plan_type][mission_row.n_vehicles].append(
-            avg_distance_covered(load_assignation_rows(mission_row.mission_id).values()))
+        euclidean_distance_sum_dict[mission_row.plan_type][mission_row.n_vehicles].append(
+            euclidean_distance_sum(load_assignation_rows(mission_row.mission_id).values()))
         
-    for n in avg_distance_covered_dict:
-        for m in avg_distance_covered_dict[n]:
-            avg_distance_covered_dict[n][m] = np.mean(avg_distance_covered_dict[n][m])
+    for n in euclidean_distance_sum_dict:
+        for m in euclidean_distance_sum_dict[n]:
+            euclidean_distance_sum_dict[n][m] = np.mean(euclidean_distance_sum_dict[n][m])
     
-    return avg_distance_covered_dict
+    return euclidean_distance_sum_dict
+
+
+def compute_trajectory_length_sum():
+
+    trajectory_length_sum_dict = {}
+
+    for mission_row in load_mission_rows().values():
+
+        if mission_row.plan_type not in trajectory_length_sum_dict:
+            trajectory_length_sum_dict[mission_row.plan_type] = {}
+            
+        if mission_row.n_vehicles not in trajectory_length_sum_dict[mission_row.plan_type]:
+            trajectory_length_sum_dict[mission_row.plan_type][mission_row.n_vehicles] = []
+        
+        trajectory_length_sum_dict[mission_row.plan_type][mission_row.n_vehicles].append(
+            sum(tr.trajectory_length for tr in load_trajectory_rows(mission_row.mission_id))
+        )
+        
+    for n in trajectory_length_sum_dict:
+        for m in trajectory_length_sum_dict[n]:
+            trajectory_length_sum_dict[n][m] = np.mean(trajectory_length_sum_dict[n][m])
+    
+    return trajectory_length_sum_dict
 
 
 def compute_assignation_elapsed_time():
@@ -181,7 +216,7 @@ if __name__ == "__main__":
     print("=" * 80)
     print("Covered distance for planning type and number of vehicles.")
     print("=" * 80)
-    d_covered = compute_avg_distance_covered()
+    d_covered = compute_euclidean_distance_sum()
     print(f"{d_covered}")
 
     print("=" * 80)

@@ -153,12 +153,14 @@ class MissionNode(Node):
                 rclpy.spin_once(self, timeout_sec=2.0)
             assigned_uavs, goal_ids, trajectories = future.result()
 
+        trajectories = self.transform_to_local_frame_trajectory(trajectories)
+        batch_processing.save_trajectories(self.mission_id, trajectories, self.avg_speed)
         self._execution_start_time = time.perf_counter()
         
         self.get_logger().info(f"Executing mission.")
         future = self.multi_offboard_controller.trajectory_following(
             assigned_uavs,
-            self.transform_to_local_frame_trajectory(trajectories)
+            trajectories
         )        
         while not future.done():
             rclpy.spin_once(self, timeout_sec=2.0)
